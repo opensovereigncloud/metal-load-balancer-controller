@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -50,6 +51,7 @@ func main() {
 	var vni int
 	var metalbondServer string
 	var nodeAddress string
+	var connectionTimeoutDuration = 20 * time.Second
 
 	flag.IntVar(&vni, "vni", 0, "VNI in which the route announcements should be done.")
 	flag.StringVar(&metalbondServer, "metalbond-server", "", "Endpoint of the metalbond server`")
@@ -86,6 +88,19 @@ func main() {
 	if err := mb.AddPeer(metalbondServer, ""); err != nil {
 		setupLog.Error(err, "unable to add metalbond peer")
 		os.Exit(1)
+	}
+
+	connectionDeadline := time.Now().Add(connectionTimeoutDuration)
+	for time.Now().Before(connectionDeadline) {
+		state, err := mb.PeerState(metalbondServer)
+		if err != nil {
+			setupLog.Error(err, "unable to add a peer", "Server", metalbondServer)
+			os.Exit(1)
+		}
+		if state == metalbond.ESTABLISHED {
+			break
+		}
+		time.Sleep(1 * time.Second)
 	}
 
 	if err := mb.Subscribe(metalbond.VNI(vni)); err != nil {
